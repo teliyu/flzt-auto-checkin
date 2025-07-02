@@ -184,8 +184,6 @@ def main():
                 result,
                 unused_traffic
             )
-            # 添加未使用流量到消息
-            message += f"\n💾 用户未使用流量: `{unused_traffic}`"
             send_telegram_message(env.get('TELEGRAM_BOT_TOKEN'), env.get('TELEGRAM_CHAT_ID'), message)
 
 if __name__ == '__main__':
