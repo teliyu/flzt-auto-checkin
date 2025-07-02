@@ -7,85 +7,164 @@ headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0'
 }
 
-
 def load_env():
+    """加载环境变量"""
     load_dotenv()
-    env = os.environ
-    return dict(env)
+    return {
+        'BASE_URL': os.getenv('BASE_URL'),
+        'EMAIL': os.getenv('EMAIL'),
+        'PASSWORD': os.getenv('PASSWORD'),
+        'TELEGRAM_BOT_TOKEN': os.getenv('TELEGRAM_BOT_TOKEN'),
+        'TELEGRAM_CHAT_ID': os.getenv('TELEGRAM_CHAT_ID')
+    }
 
+def send_telegram_message(bot_token, chat_id, message):
+    """发送Telegram通知"""
+    if not bot_token or not chat_id:
+        print("缺少Telegram配置，跳过通知")
+        return
+    
+    api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+    
+    try:
+        response = requests.post(api_url, json=payload, timeout=10)
+        if response.status_code == 200:
+            print("Telegram通知发送成功")
+        else:
+            print(f"Telegram通知发送失败: {response.text}")
+    except Exception as e:
+        print(f"发送Telegram通知时出错: {str(e)}")
 
 def login(url, email, password):
-    data = {
-        'email': email,
-        'passwd': password
-    }
-    response = requests.post(url=url, data=data, headers=headers)
-    if response.status_code != 200:
-        return None
+    """登录获取token"""
+    data = {'email': email, 'passwd': password}
     try:
-        data = json.loads(response.text)
-        return data['token']
-    except:
-        print('登录失败')
+        response = requests.post(url=url, data=data, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return None
+        data = response.json()
+        return data.get('token')
+    except Exception as e:
+        print(f'登录失败: {str(e)}')
         return None
-
 
 def checkin(url, token):
+    """执行签到"""
     headers['Access-Token'] = token
-    response = requests.get(url=url, headers=headers)
     try:
-        data = json.loads(response.text)
-        print(data['result'])
-    except:
-        print('签到失败')
-
+        response = requests.get(url=url, headers=headers, timeout=10)
+        data = response.json()
+        return data.get('result', '签到结果未知')
+    except Exception as e:
+        print(f'签到失败: {str(e)}')
+        return f'签到失败: {str(e)}'
 
 def get_user_info(url, token):
+    """获取用户信息"""
     headers['Access-Token'] = token
-    response = requests.get(url=url, headers=headers)
     try:
-        data = json.loads(response.text)
-        return data['result']['data']
-    except:
-        print('获取用户信息失败')
+        response = requests.get(url=url, headers=headers, timeout=10)
+        data = response.json()
+        return data.get('result', {}).get('data', {})
+    except Exception as e:
+        print(f'获取用户信息失败: {str(e)}')
         return None
 
-
 def convert_traffic(url, token, traffic):
+    """转换流量"""
     headers['Access-Token'] = token
-    params = {
-        'traffic': str(traffic)
-    }
-    response = requests.get(url=url, headers=headers, params=params)
+    params = {'traffic': str(traffic)}
     try:
-        data = json.loads(response.text)
-        print(data['msg'])
-    except:
-        print('流量转换失败')
+        response = requests.get(url=url, headers=headers, params=params, timeout=10)
+        data = response.json()
+        return data.get('msg', '流量转换结果未知')
+    except Exception as e:
+        print(f'流量转换失败: {str(e)}')
+        return f'流量转换失败: {str(e)}'
 
+def format_message(result, email, checkin_msg, traffic, convert_msg):
+    """格式化Telegram消息"""
+    return (
+        f"**签到任务完成报告**\n\n"
+        f"🔑 账户: `{email}`\n"
+        f"✅ 签到结果: `{checkin_msg}`\n"
+        f"📊 获得流量: `{traffic} MB`\n"
+        f"🔄 转换结果: `{convert_msg}`\n\n"
+        f"🏁 最终状态: `{result}`"
+    )
 
 def main():
+    """主函数"""
+    # 初始化消息内容
+    result = "成功"
+    checkin_msg = ""
+    traffic_msg = "0"
+    convert_msg = "无转换操作"
+    
+    # 加载配置
     env = load_env()
-    login_url = env['BASE_URL'] + '/api/token'
-    checkin_url = env['BASE_URL'] + '/api/user/checkin'
-    user_info_url = env['BASE_URL'] + '/api/user/info'
-    convert_traffic_url = env['BASE_URL'] + '/api/user/koukanntraffic'
-    email = env['EMAIL']
-    password = env['PASSWORD']
-    token = login(url=login_url, email=email, password=password)
-    if token is not None:
-        checkin(url=checkin_url, token=token)
-        data = get_user_info(url=user_info_url, token=token)
-        if data is None:
-            return
-        traffic = int(int(data['transfer_checkin']) / 1024 / 1024)
-        print(f'签到获得的剩余流量: {traffic}MB')
-        if traffic > 0:
-            convert_traffic(url=convert_traffic_url,
-                            token=token, traffic=traffic)
-        else:
-            print('没有需要转换的流量，明天再来吧！')
-
+    if not all([env['BASE_URL'], env['EMAIL'], env['PASSWORD']]):
+        error_msg = "❌ 环境变量配置不完整，请检查BASE_URL、EMAIL和PASSWORD"
+        print(error_msg)
+        send_telegram_message(env['TELEGRAM_BOT_TOKEN'], env['TELEGRAM_CHAT_ID'], error_msg)
+        return
+    
+    # 构造API地址
+    base_url = env['BASE_URL']
+    login_url = f"{base_url}/api/token"
+    checkin_url = f"{base_url}/api/user/checkin"
+    user_info_url = f"{base_url}/api/user/info"
+    convert_traffic_url = f"{base_url}/api/user/koukanntraffic"
+    
+    # 登录
+    token = login(login_url, env['EMAIL'], env['PASSWORD'])
+    if token is None:
+        error_msg = f"❌ 登录失败 - 账户: {env['EMAIL']}"
+        print(error_msg)
+        send_telegram_message(env['TELEGRAM_BOT_TOKEN'], env['TELEGRAM_CHAT_ID'], error_msg)
+        return
+    
+    # 签到
+    checkin_msg = checkin(checkin_url, token)
+    print(f'签到结果: {checkin_msg}')
+    
+    # 获取用户信息
+    data = get_user_info(user_info_url, token)
+    if not data:
+        result = "部分失败"
+        error_msg = f"⚠️ 获取用户信息失败 - 账户: {env['EMAIL']}"
+        print(error_msg)
+        send_telegram_message(env['TELEGRAM_BOT_TOKEN'], env['TELEGRAM_CHAT_ID'], error_msg)
+        return
+    
+    # 计算流量
+    traffic = int(int(data.get('transfer_checkin', 0)) / 1024 / 1024
+    traffic = round(traffic, 2)
+    traffic_msg = f"{traffic} MB"
+    print(f'签到获得的剩余流量: {traffic_msg}')
+    
+    # 流量转换
+    if traffic > 0:
+        convert_msg = convert_traffic(convert_traffic_url, token, traffic)
+        print(f'流量转换结果: {convert_msg}')
+    else:
+        convert_msg = "没有需要转换的流量"
+        print(convert_msg)
+    
+    # 发送汇总通知
+    message = format_message(
+        result, 
+        env['EMAIL'], 
+        checkin_msg, 
+        traffic_msg, 
+        convert_msg
+    )
+    send_telegram_message(env['TELEGRAM_BOT_TOKEN'], env['TELEGRAM_CHAT_ID'], message)
 
 if __name__ == '__main__':
     main()
