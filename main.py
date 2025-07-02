@@ -92,7 +92,7 @@ def convert_traffic(url, token, traffic):
         print(f'流量转换失败: {str(e)}')
         return f'流量转换失败: {str(e)}'
 
-def format_message(email, checkin_msg, traffic, convert_msg, unused_traffic, result="成功"):
+def format_message(email, checkin_msg, traffic, convert_msg, unused_traffic):
     """格式化Telegram消息"""
     return (
         f"**签到任务完成报告**\n\n"
@@ -101,7 +101,6 @@ def format_message(email, checkin_msg, traffic, convert_msg, unused_traffic, res
         f"📊 获得流量: `{traffic} MB`\n"
         f"🔄 转换结果: `{convert_msg}`\n"
         f"💾 用户未使用流量: `{unused_traffic}`\n\n" 
-        f"🏁 最终状态: `{result}`"
     )
 
 
@@ -181,7 +180,6 @@ def main():
                 checkin_msg, 
                 traffic, 
                 convert_msg,
-                result,
                 unused_traffic
             )
             send_telegram_message(env.get('TELEGRAM_BOT_TOKEN'), env.get('TELEGRAM_CHAT_ID'), message)
