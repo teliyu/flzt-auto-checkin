@@ -63,18 +63,21 @@ def checkin(url, token):
     except Exception as e:
         print(f'签到失败: {str(e)}')
         return f'签到失败: {str(e)}'
-
+        
 def get_user_info(url, token):
     """获取用户信息"""
     headers['Access-Token'] = token
     try:
         response = requests.get(url=url, headers=headers, timeout=10)
         data = response.json()
-        print("获取的用户数据:", data)  # 添加调试打印
-        return data.get('result', {}).get('data', {})
+        # 获取用户流量（未使用流量）
+        unused_traffic = data.get('result', {}).get('unusedTraffic', '未知流量')
+        print(f"未使用流量: {unused_traffic}")  # 打印未使用流量，方便调试
+        return data.get('result', {}).get('data', {}), unused_traffic  # 返回流量信息
     except Exception as e:
         print(f'获取用户信息失败: {str(e)}')
-        return None
+        return None, None
+
 
 
 def convert_traffic(url, token, traffic):
@@ -96,9 +99,11 @@ def format_message(email, checkin_msg, traffic, convert_msg, result="成功"):
         f"🔑 账户: `{email}`\n"
         f"✅ 签到结果: `{checkin_msg}`\n"
         f"📊 获得流量: `{traffic} MB`\n"
-        f"🔄 转换结果: `{convert_msg}`\n\n"
+        f"🔄 转换结果: `{convert_msg}`\n"
+        f"💾 用户未使用流量: `{unusedTraffic}`\n\n"  # 加入未使用流量字段
         f"🏁 最终状态: `{result}`"
     )
+
 
 def main():
     """主函数"""
@@ -107,6 +112,7 @@ def main():
     checkin_msg = ""
     traffic = 0
     convert_msg = "无转换操作"
+    unused_traffic = "未知流量"  # 默认值为未知流量
     
     try:
         # 加载配置
@@ -136,8 +142,8 @@ def main():
         checkin_msg = checkin(checkin_url, token)
         print(f'签到结果: {checkin_msg}')
         
-        # 获取用户信息
-        data = get_user_info(user_info_url, token)
+        # 获取用户信息和未使用流量
+        data, unused_traffic = get_user_info(user_info_url, token)
         if not data:
             result = "部分失败"
             error_msg = f"⚠️ 获取用户信息失败 - 账户: {env['EMAIL']}"
@@ -145,7 +151,7 @@ def main():
             send_telegram_message(env.get('TELEGRAM_BOT_TOKEN'), env.get('TELEGRAM_CHAT_ID'), error_msg)
             return
         
-        # 计算流量 - 修复语法错误
+        # 计算流量
         transfer_checkin = data.get('transfer_checkin', 0)
         if transfer_checkin:
             traffic = int(transfer_checkin) / (1024 * 1024)  # 字节转MB
@@ -176,6 +182,8 @@ def main():
                 convert_msg,
                 result
             )
+            # 添加未使用流量到消息
+            message += f"\n💾 用户未使用流量: `{unused_traffic}`"
             send_telegram_message(env.get('TELEGRAM_BOT_TOKEN'), env.get('TELEGRAM_CHAT_ID'), message)
 
 if __name__ == '__main__':
