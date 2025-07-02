@@ -70,10 +70,12 @@ def get_user_info(url, token):
     try:
         response = requests.get(url=url, headers=headers, timeout=10)
         data = response.json()
+        print("获取的用户数据:", data)  # 添加调试打印
         return data.get('result', {}).get('data', {})
     except Exception as e:
         print(f'获取用户信息失败: {str(e)}')
         return None
+
 
 def convert_traffic(url, token, traffic):
     """转换流量"""
